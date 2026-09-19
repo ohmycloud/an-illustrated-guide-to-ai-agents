@@ -2,6 +2,7 @@ import json
 import urllib.request
 from dataclasses import dataclass
 
+
 @dataclass
 class Response:
     """Structured response from LLM calls."""
@@ -10,6 +11,43 @@ class Response:
     reasoning: str | None = None
     tool_call: dict | None = None
     metadata: dict | None = None
+
+
+@dataclass
+class Step:
+    """A single step in an agent's trajectory."""
+    thought: str = ""
+    action: dict | None = None
+    observation: str | None = None
+    answer: str | None = None
+    metadata: dict | None = None
+
+
+class Trajectory:
+    """Records agent execution as a sequence of runs."""
+    def __init__(self) -> None:
+        self.runs: list[dict] = []
+
+    def initialize(self, query: str) -> None:
+        """Register a new run with the given query."""
+        self.runs.append({"query": query, "steps": []})
+
+    def add(self, response: Response, observation: str | None = None) -> None:
+        """Record a step from a Response, optionally with an observation."""
+        # Add THOUGHT
+        step = Step(
+            thought=response.reasoning or "",
+            metadata=response.metadata,
+        )
+
+        # Add ACTION/OBSERVATION or ANSWER
+        if observation is not None:
+            step.action = response.tool_call
+            step.observation = observation
+        else:
+            step.answer = response.content
+
+        self.runs[-1]["steps"].append(step)
 
 
 class LLM:
@@ -75,6 +113,32 @@ class LLM:
         )
 
 
+class TinyAgent:
+    """A minimal, modular, and educational agent framework."""
+    def __init__(self, llm: LLM):
+        self.llm = llm
+        self.memory  = None  # Add Memory
+        self.tools   = None  # Add Tools
+        self.planner = None  # Add Planning
+
+        self.trajectory = Trajectory()
+
+    def run(self, task: str) -> str:
+        """Run the agent on a task"""
+        self.trajectory.initialize(task)
+        return self._step(task)
+
+    def _step(self, task: str) -> str:
+        """Perform a single step"""
+        messages = [{"role": "user", "content": task}]
+        response = self.llm.generate(messages)
+        self.trajectory.add(response)
+        return response.content
+
+    def _execute_action(self, action: str) -> str | None:
+        """Execute a tool action."""
+        # Placeholder - will be implemented in later chapters
+        return f"Executed action: {action}"
 
 
 # Prepare request
@@ -103,3 +167,8 @@ llm = LLM(model="gemma4:e4b")
 # Generate a `Response` dataclass
 response = llm.generate([{"role": "user", "content": "Hi! How's life?"}])
 print(response)
+
+agent = TinyAgent(llm=llm)
+response = agent.run("What is 2 + 2?")
+print(response)
+print(agent.trajectory.runs)
